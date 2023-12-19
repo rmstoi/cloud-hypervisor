@@ -1,0 +1,20 @@
+name: Permormance metrics
+
+# on:
+#   pull_request:
+on:
+  push:
+    branches:
+      - metrics-workflow
+jobs:
+  metrics:
+    name: Metrics
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: performance metrics
+      run: |
+        scripts/dev_cli.sh tests --metrics -- -- --report-file /root/workloads/metrics.json
