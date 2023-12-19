@@ -1,0 +1,20 @@
+name: Permormance metrics Self Hosted
+
+# on:
+#   pull_request:
+on:
+  push:
+    branches:
+      - metrics-workflow-selfhosted
+jobs:
+  metrics:
+    name: Metrics Self Hosted
+    runs-on: self-hosted
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: performance metrics
+      run: |
+        scripts/dev_cli.sh tests --metrics -- -- --report-file /root/workloads/metrics.json
