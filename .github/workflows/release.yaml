@@ -3,6 +3,8 @@ on: [create, merge_group]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
+env:
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   release:
@@ -15,12 +17,21 @@ jobs:
         - target: x86_64-unknown-linux-gnu
           command: build
           args: --all --release --features mshv
+          name_ch: cloud-hypervisor
+          name_ch_remote: ch-remote
+
         - target: x86_64-unknown-linux-musl
           command: build
           args: --all --release --features mshv
+          name_ch: cloud-hypervisor-static
+          name_ch_remote: ch-remote-static
+
         - target: aarch64-unknown-linux-musl
           command: build
           args:  --all --release
+          name_ch: cloud-hypervisor-static-aarch64
+          name_ch_remote: ch-remote-static-aarch64
+
         toolchain:
           - 1.74
           #- stable
@@ -34,6 +45,9 @@ jobs:
         if: contains(matrix.platform.target, 'musl')
         run: sudo apt install -y musl-tools
       - name: Create release directory
+        if: |
+          startsWith(matrix.platform.target, 'x86_64-unknown-linux-gnu') &&
+          github.event_name == 'create' && github.event.ref_type == 'tag'
         run: rsync -rv --exclude=.git . ../cloud-hypervisor-${{ github.event.ref }}
       - name: Build ${{ matrix.toolchain }} ${{ matrix.platform.target }}
         uses: houseabsolute/actions-rust-cross@v0
@@ -43,95 +57,19 @@ jobs:
           args: ${{ matrix.platform.args  }}
           strip: true
           toolchain: ${{ matrix.toolchain }}
-      - name: Create Release
+      - name: Copy Release Binaries
         if: github.event_name == 'create' && github.event.ref_type == 'tag'
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          cp target/${{ matrix.platform.target }}/release/cloud-hypervisor ./${{ matrix.platform.name_ch }}
+          cp target/${{ matrix.platform.target }}/release/ch-remote ./${{ matrix.platform.name_ch_remote }}
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v3
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
-          draft: true
-          prerelease: true
-      - name: Upload cloud-hypervisor
-        if: |
-          startsWith(matrix.platform.target, 'x86_64-unknown-linux-gnu') &&
-          github.event_name == 'create' && github.event.ref_type == 'tag'
-        id: upload-release-cloud-hypervisor
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: target/x86_64-unknown-linux-gnu/release/cloud-hypervisor
-          asset_name: cloud-hypervisor
-          asset_content_type: application/octet-stream
-      - name: Upload static cloud-hypervisor
-        if: |
-          startsWith(matrix.platform.target, 'x86_64-unknown-linux-musl') &&
-          github.event_name == 'create' && github.event.ref_type == 'tag'
-        id: upload-release-static-cloud-hypervisor
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: target/x86_64-unknown-linux-musl/release/cloud-hypervisor
-          asset_name: cloud-hypervisor-static
-          asset_content_type: application/octet-stream
-      - name: Upload ch-remote
-        if: |
-          startsWith(matrix.platform.target, 'x86_64-unknown-linux-gnu') &&
-          github.event_name == 'create' && github.event.ref_type == 'tag'
-        id: upload-release-ch-remote
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: target/x86_64-unknown-linux-gnu/release/ch-remote
-          asset_name: ch-remote
-          asset_content_type: application/octet-stream
-      - name: Upload static-ch-remote
-        if: |
-          startsWith(matrix.platform.target, 'x86_64-unknown-linux-musl') &&
-          github.event_name == 'create' && github.event.ref_type == 'tag'
-        id: upload-release-static-ch-remote
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: target/x86_64-unknown-linux-musl/release/ch-remote
-          asset_name: ch-remote-static
-          asset_content_type: application/octet-stream
-      - name: Upload static AArch64 cloud-hypervisor
-        if: |
-          startsWith(matrix.platform.target, 'aarch64-unknown-linux-musl') &&
-          github.event_name == 'create' && github.event.ref_type == 'tag'
-        id: upload-release-static-aarch64-cloud-hypervisor
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: target/aarch64-unknown-linux-musl/release/cloud-hypervisor
-          asset_name: cloud-hypervisor-static-aarch64
-          asset_content_type: application/octet-stream
-      - name: Upload static AArch64 ch-remote
-        if: |
-          startsWith(matrix.platform.target, 'aarch64-unknown-linux-musl') &&
-          github.event_name == 'create' && github.event.ref_type == 'tag'
-        id: upload-release-static-aarch64-ch-remote
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: target/aarch64-unknown-linux-musl/release/ch-remote
-          asset_name: ch-remote-static-aarch64
-          asset_content_type: application/octet-stream
+          name: Artifacts for ${{ matrix.platform.target }}
+          path: |
+            cloud-hypervisor*
+            ch-remote*
       - name: Vendor
         if: |
           startsWith(matrix.platform.target, 'x86_64-unknown-linux-gnu') &&
@@ -146,18 +84,20 @@ jobs:
         if: |
           startsWith(matrix.platform.target, 'x86_64-unknown-linux-gnu') &&
           github.event_name == 'create' && github.event.ref_type == 'tag'
-        working-directory: ../
-        run: tar cJf cloud-hypervisor-${{ github.event.ref }}.tar.xz cloud-hypervisor-${{ github.event.ref }}
+        run: tar cJf cloud-hypervisor-${{ github.event.ref }}.tar.xz ../cloud-hypervisor-${{ github.event.ref }}
       - name: Upload cloud-hypervisor vendored source archive
         if: |
           startsWith(matrix.platform.target, 'x86_64-unknown-linux-gnu') &&
           github.event_name == 'create' && github.event.ref_type == 'tag'
         id: upload-release-cloud-hypervisor-vendored-sources
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v3
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ../cloud-hypervisor-${{ github.event.ref }}.tar.xz
-          asset_name: cloud-hypervisor-${{ github.event.ref }}.tar.xz
-          asset_content_type: application/x-xz
+          path: cloud-hypervisor-${{ github.event.ref }}.tar.xz
+          name: cloud-hypervisor-${{ github.event.ref }}.tar.xz
+      - name: Create GitHub Release
+        if: github.event_name == 'create' && github.event.ref_type == 'tag'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            cloud-hypervisor*
+            ch-remote*
